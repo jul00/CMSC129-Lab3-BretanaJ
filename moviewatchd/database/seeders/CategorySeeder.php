@@ -8,15 +8,11 @@ use App\Models\Category;
 
 class CategorySeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        Category::insert([
-            ['name' => 'Action'],
-            ['name' => 'Drama'],
-            ['name' => 'Comedy']
-        ]);
+        Category::create(['name' => 'Action']);
+        Category::create(['name' => 'Drama']);
+        Category::create(['name' => 'Comedy']);
+        Category::create(['name' => 'Horror']);
     }
 }
