@@ -16,6 +16,7 @@ class ChatBotController extends Controller
             $movies = Movie::all();
             $moviesData = $movies->map(function ($m) {
                 return [
+                    'id' => $m->id,
                     'title' => $m->title,
                     'rating' => $m->rating,
                     'comment' => $m->comment
@@ -75,13 +76,16 @@ class ChatBotController extends Controller
                                     USER MESSAGE:
                                     " . $message . "
 
+                                    Return movie ID instead of title whenever possible.
+
                                     If user asks to delete, update, or find movies, respond using ONLY this dataset.
 
                                     Respond ONLY in JSON format like this:
 
                                     {
                                     \"action\": \"create | update | delete | read | none\",
-                                    \"title\": \"movie title\",
+                                    \"id\": number,
+                                    \"title\": \"movie title\" (optional for display only),
                                     \"rating\": number,
                                     \"comment\": \"text\"
                                     }
@@ -201,16 +205,17 @@ class ChatBotController extends Controller
 
             // UPDATE
             if ($intent['action'] === 'update') {
-                $movie = $this->updateMovie($intent['title'], [
-                    'rating' => $intent['rating'],
-                    'comment' => $intent['comment']
+                $movie = $this->updateMovie($intent['id'], [
+                    'title' => $intent['title'] ?? null,
+                    'rating' => $intent['rating'] ?? null,
+                    'comment' => $intent['comment'] ?? null,
                 ]);
 
                 return response()->json([
                     'reply' => $movie
                         ? "✏️ Movie '{$movie->title}' updated!"
                         : "❌ Movie not found.",
-                        'refresh' => true
+                    'refresh' => true
                 ]);
             }
 
@@ -244,12 +249,14 @@ class ChatBotController extends Controller
         return Movie::create($data);
     }
 
-    private function updateMovie($title, $data) {
-        $movie = Movie::where('title', $title)->first();
+    private function updateMovie($id, $data) {
+        $movie = Movie::find($id);
+
         if ($movie) {
-            $movie->update($data);
+            $movie->update(array_filter($data)); // removes null values
             return $movie;
         }
+
         return null;
     }
 }
