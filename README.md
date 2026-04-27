@@ -138,4 +138,37 @@ Comments are added in the code to explain validations, relationships, and storag
 
 ---
 
+## 🤖 AI Assistant Integration (NEW FEATURE)
 
+This project includes an **AI-powered chatbot assistant** using Google Gemini API that allows users to manage movies using natural language.
+
+### 🧠 AI Capabilities
+The assistant can:
+- Add new movies using natural language
+- Update existing movie details
+- Delete movies with confirmation
+- Search and retrieve movie information
+- Provide conversational responses with context awareness
+
+---
+
+### 💬 Example AI Commands
+- "Add a movie called Inception rated 5 with great visuals"
+- "Update Interstellar rating to 4.5"
+- "Delete The Batman"
+- "Show me all movies I added recently"
+
+---
+
+### ⚙️ AI Intent System (Core Logic)
+
+The AI converts user input into structured JSON:
+
+```json
+{
+  "action": "create | update | delete | read | none",
+  "title": "movie title",
+  "rating": 5,
+  "comment": "optional comment"
+}
+```

@@ -24,12 +24,18 @@ class ChatBotController extends Controller
 
             $history[] = [
                 'role' => 'user',
-                'message' => $message
+                'content' => $message
             ];
 
             $history = array_slice($history, -10);
 
-            if (strtolower($message) === 'yes' && session('pending_delete')) {
+            if (!$message) {
+                return response()->json([
+                    'reply' => 'Please enter a message.'
+                ]);
+            }
+
+            if (trim(strtolower($message)) === 'yes' && session('pending_delete')) {
                 $title = session('pending_delete');
                 session()->forget('pending_delete');
 
@@ -39,18 +45,13 @@ class ChatBotController extends Controller
                     $movie->delete();
 
                     return response()->json([
-                        'reply' => "🗑️ Movie '$title' deleted successfully!"
+                        'reply' => "🗑️ Movie '$title' deleted successfully!",
+                        'refresh' => true
                     ]);
                 }
 
                 return response()->json([
-                    'reply' => "❌ Movie not found."
-                ]);
-            }
-
-            if (!$message) {
-                return response()->json([
-                    'reply' => 'Please enter a message.'
+                    'reply' => "❌ Movie not found.",
                 ]);
             }
 
@@ -96,6 +97,12 @@ class ChatBotController extends Controller
                 ]
             );
 
+            if ($response->status() == 503) {
+                return response()->json([
+                    'reply' => "🤖 AI is busy right now. Please try again."
+                ], 503);
+            }
+
             if (!$response->successful()) {
                 return response()->json([
                     'reply' => 'AI Error: ' . $response->body()
@@ -104,32 +111,35 @@ class ChatBotController extends Controller
 
             $data = $response->json();
 
-            $reply = $data['candidates'][0]['content']['parts'][0]['text']
-                ?? 'No response from AI.';
+            if (!isset($data['candidates'][0]['content']['parts'][0]['text'])) {
+                    return response()->json([
+                        'reply' => '🤖 AI did not return a valid response.'
+                    ]);
+                }
 
+            $rawText = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+            $cleanText = trim(preg_replace('/```json|```/', '', $rawText));
+
+            $intent = json_decode($cleanText, true);
+
+            if (!$intent || !isset($intent['action'])) {
+                    return response()->json([
+                        'reply' => 'Sorry, I did not understand your request.'
+                    ]);
+                }
+
+            // $reply = 'Done.';
 
             $history[] = [
                 'role' => 'assistant',
-                'message' => $reply
+                'content' => $cleanText
             ];
 
             $history = array_slice($history, -10);
 
             session(['chat_history' => $history]);
 
-            $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '{}';
 
-            $text = trim($text);
-            $text = preg_replace('/```json|```/', '', $text);
-
-            $intent = json_decode($text, true);
-
-            // safety check
-            if (!$intent || !isset($intent['action'])) {
-                return response()->json([
-                    'reply' => 'Sorry, I did not understand that.'
-                ]);
-            }
 
             // CREATE
             if ($intent['action'] === 'create') {
@@ -140,8 +150,43 @@ class ChatBotController extends Controller
                 ]);
 
                 return response()->json([
-                    'reply' => "✅ Movie '{$movie->title}' added successfully!"
+                    'reply' => "✅ Movie '{$movie->title}' added successfully!",
+                    'refresh' => true
                 ]);
+            }
+
+            // READ
+            if ($intent['action'] === 'read') {
+                if (!empty($intent['title'])) {
+                    $movie = Movie::where('title', $intent['title'])->first();
+
+                    if ($movie) {
+                        return response()->json([
+                            'reply' => "🎬 {$movie->title}\n⭐ Rating: {$movie->rating}\n💬 {$movie->comment}"
+                        ]);
+                    } else {
+                        return response()->json([
+                            'reply' => "❌ Movie not found."
+                        ]);
+                    }
+                } else {
+                    // If no title, return all movies
+                    $movies = Movie::all();
+
+                    if ($movies->isEmpty()) {
+                        return response()->json([
+                            'reply' => "📭 No movies found."
+                        ]);
+                    }
+
+                    $list = $movies->map(function ($m) {
+                        return "🎬 {$m->title} (⭐ {$m->rating})";
+                    })->implode("\n");
+
+                    return response()->json([
+                        'reply' => "📽️ Your Movies:\n" . $list
+                    ]);
+                }
             }
 
             // UPDATE
@@ -154,7 +199,8 @@ class ChatBotController extends Controller
                 return response()->json([
                     'reply' => $movie
                         ? "✏️ Movie '{$movie->title}' updated!"
-                        : "❌ Movie not found."
+                        : "❌ Movie not found.",
+                        'refresh' => true
                 ]);
             }
 
@@ -169,7 +215,12 @@ class ChatBotController extends Controller
 
             // READ / DEFAULT RESPONSE
             return response()->json([
-                'reply' => $reply
+                'reply' => "🤖 I didn’t understand that. You can ask me to:
+                        - 📽️ Show all movies
+                        - ➕ Add a movie (e.g., 'Add Inception rating 5')
+                        - ✏️ Update a movie
+                        - 🗑️ Delete a movie"
+
             ]);
 
         } catch (\Exception $e) {
@@ -191,14 +242,4 @@ class ChatBotController extends Controller
         }
         return null;
     }
-
-    private function deleteMovie($title) {
-        $movie = Movie::where('title', $title)->first();
-        if ($movie) {
-            $movie->delete();
-            return $movie;
-        }
-        return null;
-    }
-
 }

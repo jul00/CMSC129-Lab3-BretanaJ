@@ -78,6 +78,10 @@
                 document.getElementById('messages').innerHTML +=
                     `<p style='color:red;'>Error connecting to server</p>`;
             });
+
+            if (data.refresh) {
+                fetchMoviesAgain();
+            }
         }
     </script>
 
