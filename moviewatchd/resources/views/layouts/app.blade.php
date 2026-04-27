@@ -73,6 +73,7 @@
                 document.getElementById('messages').innerHTML +=
                     `<p><b>AI:</b> ${data.reply}</p>`;
             })
+
             .catch(error => {
                 document.getElementById('messages').innerHTML +=
                     `<p style='color:red;'>Error connecting to server</p>`;

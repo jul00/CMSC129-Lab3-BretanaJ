@@ -19,6 +19,7 @@
                 <!-- Restore Button -->
                 <form method="POST" action="{{ route('movies.restore', $movie->id) }}" class="d-inline">
                     @csrf
+                    @method('PATCH')
                     <button class="btn btn-success btn-sm">Restore</button>
                 </form>
 

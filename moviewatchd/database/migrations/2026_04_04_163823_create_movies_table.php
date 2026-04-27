@@ -14,11 +14,11 @@ return new class extends Migration
         Schema::create('movies', function (Blueprint $table) {
             $table->id();
             $table->string('title');
-            $table->string('genre');
-            $table->integer('release_year');
+            $table->string('genre')->nullable();
+            $table->integer('release_year')->nullable();
             $table->float('rating');
             $table->text('comment')->nullable();
-            $table->date('watched_at');
+            $table->date('watched_at')->nullable();
             $table->foreignId('category_id')->constrained()->cascadeOnDelete();
             $table->timestamps();
             $table->softDeletes();

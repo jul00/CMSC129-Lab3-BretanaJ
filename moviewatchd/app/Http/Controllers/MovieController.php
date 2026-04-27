@@ -23,7 +23,7 @@ class MovieController extends Controller
             $query->where('genre', $request->genre);
         }
 
-        $movies = $query->paginate(10);
+        $movies = $query->get();
 
         return view('movies.index', compact('movies'));
     }
