@@ -72,6 +72,9 @@
             .then(data => {
                 document.getElementById('messages').innerHTML +=
                     `<p><b>AI:</b> ${data.reply}</p>`;
+                if (data.refresh) {
+                    location.reload();
+                }
             })
 
             .catch(error => {
@@ -79,9 +82,7 @@
                     `<p style='color:red;'>Error connecting to server</p>`;
             });
 
-            if (data.refresh) {
-                fetchMoviesAgain();
-            }
+
         }
     </script>
 

@@ -56,7 +56,7 @@ class ChatBotController extends Controller
             }
 
             $response = Http::post(
-                'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=' . env('GEMINI_API_KEY'),
+                'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=' . env('GEMINI_API_KEY'),
                 [
                     "contents" => [
                         [
@@ -103,6 +103,12 @@ class ChatBotController extends Controller
                 ], 503);
             }
 
+            if ($response->status() == 429) {
+                return response()->json([
+                    'reply' => "🚫 AI quota reached. Please try again later or upgrade API plan."
+                ], 429);
+}
+
             if (!$response->successful()) {
                 return response()->json([
                     'reply' => 'AI Error: ' . $response->body()
@@ -146,7 +152,11 @@ class ChatBotController extends Controller
                 $movie = $this->createMovie([
                     'title' => $intent['title'],
                     'rating' => $intent['rating'] ?? 0,
-                    'comment' => $intent['comment'] ?? ''
+                    'comment' => $intent['comment'] ?? '',
+                    'genre' => 'Unknown',
+                    'release_year' => date('Y'),
+                    'watched_at' => now(),
+                    'category_id' => 1 // make sure this exists in DB
                 ]);
 
                 return response()->json([
