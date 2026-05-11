@@ -78,8 +78,8 @@ php artisan db:seed        # Populate database with sample data
 ---
 
 ## 🖼️ Screenshots of the Application
-
-
+![My Photo](screenshot1.png)
+![My Photo](screenshot2.png)
 ---
 
 ## ✅ Features Implemented
@@ -138,7 +138,7 @@ Comments are added in the code to explain validations, relationships, and storag
 
 ---
 
-## 🤖 AI Assistant Integration (NEW FEATURE)
+## 🤖 AI Assistant Integration (Gemini API)
 
 This project includes an **AI-powered chatbot assistant** using Google Gemini API that allows users to manage movies using natural language.
 
@@ -152,11 +152,43 @@ The assistant can:
 
 ---
 
+### 🪛 Setup Instructions
+
+## 1. Get API Key
+  Get your key from:
+  https://ai.google.dev/gemini-api
+
+## 2. Add to .env
+  GEMINI_API_KEY=your_api_key_here  
+
+## 3. Run migrations
+  ```bash
+  php artisan migrate
+  ```
+
+## 4. Run server
+  ```bash
+  php artisan serve 
+  ```
+
 ### 💬 Example AI Commands
 - "Add a movie called Inception rated 5 with great visuals"
 - "Update Interstellar rating to 4.5"
 - "Delete The Batman"
 - "Show me all movies I added recently"
+
+---
+## ⚙️ How It Works
+
+1. User sends a message via chat UI  
+2. Laravel sends:
+   - Chat history (session-based)
+   - Movie database (JSON format)
+   - User prompt  
+   to Gemini API  
+3. Gemini returns structured JSON  
+4. Laravel parses JSON and executes actions  
+5. Response is returned to frontend  
 
 ---
 
@@ -172,3 +204,18 @@ The AI converts user input into structured JSON:
   "comment": "optional comment"
 }
 ```
+
+## 🧠 AI Response Format
+
+The AI must return **ONLY valid JSON**:
+
+```json
+{
+  "action": "create | read | update | delete | history | none",
+  "id": 1,
+  "title": "Movie Title",
+  "rating": 5,
+  "min_rating": 4,
+  "max_rating": 10,
+  "comment": "Optional comment"
+}

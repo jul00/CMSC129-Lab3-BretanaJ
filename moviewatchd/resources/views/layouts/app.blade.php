@@ -49,8 +49,18 @@
     <script>
         function toggleChat(){
             let box = document.getElementById('chatbox');
-            console.log("clicked");
-            box.style.display = box.style.display === 'none' ? 'block' : 'none';
+            if (box.style.display === 'none') {
+                box.style.display = 'block';
+
+                if (!box.dataset.started) {
+                    document.getElementById('messages').innerHTML +=
+                        `<p><b>AI:</b> 👋 Hi! How may I help you?</p>`;
+
+                    box.dataset.started = "true";
+                }
+            } else {
+                box.style.display = 'none';
+            }
         }
 
         function send(){
@@ -59,6 +69,8 @@
             document.getElementById('messages').innerHTML += `<p><b>You:</b> ${msg}</p>`;
 
             document.getElementById('msg').value = '';
+
+            showThinking();
 
             fetch('/chat',{
                 method:'POST',
@@ -70,8 +82,9 @@
             })
             .then(res => res.json())
             .then(data => {
+                removeThinking();
                 document.getElementById('messages').innerHTML +=
-                    `<p><b>AI:</b> ${data.reply}</p>`;
+                    `<p><b>AI: </b> ${data.reply}</p>`;
                 if (data.refresh) {
                     location.reload();
                 }
@@ -83,6 +96,22 @@
             });
 
 
+        }
+
+        function showThinking() {
+            const messages = document.getElementById('messages');
+
+            const thinking = document.createElement('p');
+            thinking.id = "thinking";
+            thinking.innerHTML = `<b>AI:</b> 🤖 Thinking...`;
+
+            messages.appendChild(thinking);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function removeThinking() {
+            const thinking = document.getElementById('thinking');
+            if (thinking) thinking.remove();
         }
     </script>
 

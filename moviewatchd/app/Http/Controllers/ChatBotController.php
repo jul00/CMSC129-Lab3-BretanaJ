@@ -12,8 +12,17 @@ class ChatBotController extends Controller
     {
         try {
             $message = $request->message;
+
+            if (!$message) {
+                return response()->json([
+                    'reply' => 'Please enter a message.'
+                ]);
+            }
+
             $history = session('chat_history', []);
+
             $movies = Movie::all();
+
             $moviesData = $movies->map(function ($m) {
                 return [
                     'id' => $m->id,
@@ -30,12 +39,7 @@ class ChatBotController extends Controller
 
             $history = array_slice($history, -10);
 
-            if (!$message) {
-                return response()->json([
-                    'reply' => 'Please enter a message.'
-                ]);
-            }
-
+            // DELETE CONFIRMATION
             if (trim(strtolower($message)) === 'yes' && session('pending_delete')) {
                 $title = session('pending_delete');
                 session()->forget('pending_delete');
@@ -52,211 +56,204 @@ class ChatBotController extends Controller
                 }
 
                 return response()->json([
-                    'reply' => "❌ Movie not found.",
+                    'reply' => "❌ Movie not found."
                 ]);
             }
 
-            $response = Http::post(
-                'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=' . env('GEMINI_API_KEY'),
-                [
-                    "contents" => [
+            // MODEL ROTATION
+            $models = [
+                'gemini-2.5-flash-lite',
+                'gemini-2.5-flash',
+                'gemini-1.5-flash'
+            ];
+
+            $response = null;
+            $lastError = null;
+
+            foreach ($models as $model) {
+                try {
+                    $response = Http::timeout(10)->post(
+                        "https://generativelanguage.googleapis.com/v1/models/{$model}:generateContent?key=" . env('GEMINI_API_KEY'),
                         [
-                            "parts" => [
+                            "contents" => [
                                 [
-                                    "text" =>
-                                    "You are a movie assistant inside a Laravel app called MovieWatchd.
-                                    Use ONLY the movie data provided below.
+                                    "parts" => [
+                                        [
+                                            "text" =>
+                                            "You are a movie assistant for MovieWatchd.
 
-                                    Conversation History:
-                                    " . json_encode($history) . "
+                                            MOVIES:
+                                            " . json_encode($moviesData) . "
 
-                                    MOVIES DATA:
-                                    " . json_encode($moviesData) . "
+                                            CHAT HISTORY:
+                                            " . json_encode($history) . "
 
-                                    USER MESSAGE:
-                                    " . $message . "
+                                            USER:
+                                            {$message}
 
-                                    Return movie ID instead of title whenever possible.
+                                            Return ONLY valid JSON:
 
-                                    If user asks to delete, update, or find movies, respond using ONLY this dataset.
-
-                                    Respond ONLY in JSON format like this:
-
-                                    {
-                                    \"action\": \"create | update | delete | read | none\",
-                                    \"id\": number,
-                                    \"title\": \"movie title\" (optional for display only),
-                                    \"rating\": number,
-                                    \"comment\": \"text\"
-                                    }
-
-                                    If it's just a question, use action = \"read\".
-                                    If unclear, use action = \"none\".
-
-                                    "
+                                            {
+                                                \"action\": \"create|read|update|delete|history|none\",
+                                                \"id\": number,
+                                                \"title\": \"string\",
+                                                \"rating\": number,
+                                                \"min_rating\": number,
+                                                \"max_rating\": number,
+                                                \"comment\": \"string\"
+                                            }"
+                                        ]
+                                    ]
                                 ]
                             ]
                         ]
-                    ]
-                ]
-            );
+                    );
 
-            if ($response->status() == 503) {
-                return response()->json([
-                    'reply' => "🤖 AI is busy right now. Please try again."
-                ], 503);
+                    if ($response->successful()) {
+                        break;
+                    }
+
+                    if (in_array($response->status(), [429, 503])) {
+                        $lastError = $response->body();
+                        continue;
+                    }
+
+                    return response()->json([
+                        'reply' => 'AI Error: ' . $response->body()
+                    ], 500);
+
+                } catch (\Exception $e) {
+                    $lastError = $e->getMessage();
+                    continue;
+                }
             }
 
-            if ($response->status() == 429) {
+            if (!$response || !$response->successful()) {
                 return response()->json([
-                    'reply' => "🚫 AI quota reached. Please try again later or upgrade API plan."
-                ], 429);
-}
-
-            if (!$response->successful()) {
-                return response()->json([
-                    'reply' => 'AI Error: ' . $response->body()
-                ], 500);
+                    'reply' => "AI unavailable. Please try again later."
+                ], 503);
             }
 
             $data = $response->json();
 
-            if (!isset($data['candidates'][0]['content']['parts'][0]['text'])) {
-                    return response()->json([
-                        'reply' => '🤖 AI did not return a valid response.'
-                    ]);
-                }
-
             $rawText = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+
             $cleanText = trim(preg_replace('/```json|```/', '', $rawText));
 
             $intent = json_decode($cleanText, true);
 
             if (!$intent || !isset($intent['action'])) {
-                    return response()->json([
-                        'reply' => 'Sorry, I did not understand your request.'
-                    ]);
-                }
-
-            // $reply = 'Done.';
+                return response()->json([
+                    'reply' => 'Invalid AI response.'
+                ]);
+            }
 
             $history[] = [
                 'role' => 'assistant',
                 'content' => $cleanText
             ];
 
-            $history = array_slice($history, -10);
-
-            session(['chat_history' => $history]);
-
-
+            session(['chat_history' => array_slice($history, -10)]);
 
             // CREATE
             if ($intent['action'] === 'create') {
-                $movie = $this->createMovie([
-                    'title' => $intent['title'],
+                $movie = Movie::create([
+                    'title' => $intent['title'] ?? 'Untitled',
                     'rating' => $intent['rating'] ?? 0,
-                    'comment' => $intent['comment'] ?? '',
-                    'genre' => 'Unknown',
-                    'release_year' => date('Y'),
-                    'watched_at' => now(),
-                    'category_id' => 1 // make sure this exists in DB
+                    'comment' => $intent['comment'] ?? ''
                 ]);
 
                 return response()->json([
-                    'reply' => "✅ Movie '{$movie->title}' added successfully!",
+                    'reply' => "✅ Movie '{$movie->title}' added!",
                     'refresh' => true
                 ]);
             }
 
             // READ
             if ($intent['action'] === 'read') {
+
+                $query = Movie::query();
+
                 if (!empty($intent['title'])) {
-                    $movie = Movie::where('title', $intent['title'])->first();
+                    $query->where('title', 'LIKE', '%' . $intent['title'] . '%');
+                }
 
-                    if ($movie) {
-                        return response()->json([
-                            'reply' => "🎬 {$movie->title}\n⭐ Rating: {$movie->rating}\n💬 {$movie->comment}"
-                        ]);
-                    } else {
-                        return response()->json([
-                            'reply' => "❌ Movie not found."
-                        ]);
-                    }
-                } else {
-                    // If no title, return all movies
-                    $movies = Movie::all();
+                if (!empty($intent['min_rating'])) {
+                    $query->where('rating', '>=', $intent['min_rating']);
+                }
 
-                    if ($movies->isEmpty()) {
-                        return response()->json([
-                            'reply' => "📭 No movies found."
-                        ]);
-                    }
+                if (!empty($intent['max_rating'])) {
+                    $query->where('rating', '<=', $intent['max_rating']);
+                }
 
-                    $list = $movies->map(function ($m) {
-                        return "🎬 {$m->title} (⭐ {$m->rating})";
-                    })->implode("\n");
+                $movies = $query->get();
 
+                if ($movies->isEmpty()) {
                     return response()->json([
-                        'reply' => "📽️ Your Movies:\n" . $list
+                        'reply' => "📭 No matching movies found."
                     ]);
                 }
+
+                return response()->json([
+                    'reply' => "📽️ Movies:\n" .
+                        $movies->map(fn($m) => "🎬 {$m->title} (⭐ {$m->rating})")->implode("\n")
+                ]);
             }
 
             // UPDATE
             if ($intent['action'] === 'update') {
-                $movie = $this->updateMovie($intent['id'], [
+
+                $movie = Movie::find($intent['id']);
+
+                if (!$movie) {
+                    return response()->json([
+                        'reply' => "❌ Movie not found."
+                    ]);
+                }
+
+                $movie->update(array_filter([
                     'title' => $intent['title'] ?? null,
                     'rating' => $intent['rating'] ?? null,
-                    'comment' => $intent['comment'] ?? null,
-                ]);
+                    'comment' => $intent['comment'] ?? null
+                ]));
 
                 return response()->json([
-                    'reply' => $movie
-                        ? "✏️ Movie '{$movie->title}' updated!"
-                        : "❌ Movie not found.",
+                    'reply' => "✏️ Movie '{$movie->title}' updated!",
                     'refresh' => true
                 ]);
             }
 
-            // DELETE (ASK CONFIRMATION)
+            // DELETE
             if ($intent['action'] === 'delete') {
                 session(['pending_delete' => $intent['title']]);
 
                 return response()->json([
-                    'reply' => "⚠️ Are you sure you want to delete '{$intent['title']}'? Type YES to confirm."
+                    'reply' => "⚠️ Confirm delete '{$intent['title']}'? Type YES."
                 ]);
             }
 
-            // READ / DEFAULT RESPONSE
-            return response()->json([
-                'reply' => "🤖 I didn’t understand that. You can ask me to:
-                        - 📽️ Show all movies
-                        - ➕ Add a movie (e.g., 'Add Inception rating 5')
-                        - ✏️ Update a movie
-                        - 🗑️ Delete a movie"
+            // HISTORY
+            if ($intent['action'] === 'history') {
 
+                $messages = collect(session('chat_history', []))
+                    ->where('role', 'user')
+                    ->pluck('content')
+                    ->take(-5)
+                    ->implode("\n");
+
+                return response()->json([
+                    'reply' => "🕘 Recent prompts:\n" . $messages
+                ]);
+            }
+
+            return response()->json([
+                'reply' => "🤖 I didn’t understand that."
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
-                'reply' => 'Server error. Please try again later.'
+                'reply' => 'Server error: ' . $e->getMessage()
             ], 500);
         }
-    }
-
-    private function createMovie($data) {
-        return Movie::create($data);
-    }
-
-    private function updateMovie($id, $data) {
-        $movie = Movie::find($id);
-
-        if ($movie) {
-            $movie->update(array_filter($data)); // removes null values
-            return $movie;
-        }
-
-        return null;
     }
 }
